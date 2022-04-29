@@ -45,7 +45,10 @@ class Node(threading.Thread):
         #print(f"[P{self.id}] Got command with data {data}")
         if command == "g-state":
             print(f"G{self.id}, {self.role}, state={self.state.name}")
-
+        if command == "attack":
+            return
+        if command == "retreat":
+            return
         elif command == "exit":
             self.stop()
 

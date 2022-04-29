@@ -6,8 +6,6 @@ import os
 START_PORT = 6394
 
 LIST_PAYLOAD = {"command": "g-state"}
-ATTACK_PAYLOAD = {"command": "attack"}
-RETREAT_PAYLOAD = {"command": "retreat"}
 EXIT_PAYLOAD = {"command": "exit"}
 
 def start(num_threads: int) -> List[node.Node]:
@@ -30,7 +28,16 @@ def run(nodes: List[node.Node]):
             command = str(input("Enter command: ")).lower().rstrip()
             parts = command.split(" ")
             if parts[0] == "g-state":
-                selfcast(nodes, LIST_PAYLOAD)
+                if(len(parts) > 1):
+                    handle_change(nodes, parts)
+                else:    
+                    selfcast(nodes, LIST_PAYLOAD)
+            if parts[0] == "actual-order":
+                handle_order(nodes, parts)
+            if parts[0] == "g-add":
+                handle_add(nodes, parts)
+            if parts[0] == "g-kill":
+                handle_kill(nodes, parts)
             elif parts[0] == "exit":
                 stop_nodes(nodes)
                 os._exit(0)
@@ -53,6 +60,29 @@ def broadcast(nodes: List[node.Node], msg: dict):
 def stop_nodes(nodes: List[node.Node]):
     selfcast(nodes, EXIT_PAYLOAD)
 
+def handle_order(nodes: List[node.Node], parts: List[str]):
+    if len(parts) < 2:
+        print(f"Expected order parameter, got None")
+        return
+    broadcast(nodes, {"command": parts[1], "t": float(parts[1])})
+
+def handle_kill(nodes: List[node.Node], parts: List[str]):
+    if len(parts) < 2:
+        print(f"Expected node id parameter, got None")
+        return
+    return
+
+def handle_add(nodes: List[node.Node], parts: List[str]):
+    if len(parts) < 2:
+        print(f"Expected number of new nodes, got None")
+        return
+    return
+
+def handle_change(nodes: List[node.Node], parts: List[str]):
+    if len(parts) < 3:
+        print(f"Expected id and state parameter")
+        return
+    return
 
 if __name__=='__main__':
     if len(sys.argv) < 2:
