@@ -3,7 +3,6 @@ import time
 import threading
 from typing import List
 import enum
-import random
 
 from matplotlib.pyplot import connect
 from nodeconnection import NodeConnection
@@ -12,28 +11,27 @@ class State(enum.Enum):
     F = 1
     NF = 2
 
+class Role(enum.Enum):
+    PRIMARY = 1,
+    SECONDARY = 2
+
 class Node(threading.Thread):
 
-    def __init__(self, port: int, id: int):
+    def __init__(self, port: int, id: int, is_primary: bool):
 
         super(Node, self).__init__(daemon=True)
         self.terminate_flag = threading.Event()
 
+        self.id: int = id
         self.host = "127.0.0.1" #Allow only localhost
         self.port: int = port
 
         self.state = State.NF
-        self.role = "secondary"
-
-        self.queue = []
-
-        self.timestamp: int = 0
-        self.message_timestamp: int = -1
+        self.role = Role.PRIMARY if is_primary else Role.SECONDARY
         self.callback = self.node_callback
 
         self.connections: List[NodeConnection] = [] 
 
-        self.id: int = id
 
         # Start the TCP/IP server
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -42,15 +40,27 @@ class Node(threading.Thread):
 
     def node_callback(self, data: dict):
         command: str = data.get("command")
-        #print(f"[P{self.id}] Got command with data {data}")
+        #print(f"[G{self.id}] Got command with data {data}")
         if command == "g-state":
-            print(f"G{self.id}, {self.role}, state={self.state.name}")
-        if command == "attack":
+            state = data.get("state")
+            if state is None:
+                print(f"G{self.id}, {self.role.name.lower()}, state={self.state.name}")
+            else:
+                self.state = State.F if state == "faulty" else State.NF
+        elif command == "g-kill":
+            id = data.get("id")
+            if self.id == id:
+                self.stop()
+            else:
+                for conn in self.connections:
+                    if conn.id == id:
+                        conn.stop()
+        elif command == "actual-order":
             return
-        if command == "retreat":
-            return
-        elif command == "exit":
-            self.stop()
+        elif command == "set-primary":
+            self.role = Role.PRIMARY
+        elif command == "simple-state":
+            print(f"G{self.id}, {self.role.name.lower()}")
 
     def init_server(self):
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -63,7 +73,7 @@ class Node(threading.Thread):
             connection.send(data)
 
     def send_to_self(self, data: dict):
-        self.node_callback(data)
+        self.send_to_node_with_id(data, self.id)
 
     def send_to_node_with_id(self, data: dict, id: int):
         for connection in self.connections:
@@ -90,6 +100,7 @@ class Node(threading.Thread):
 
     def stop(self):
         self.terminate_flag.set()
+        self.connect_with_node(self.port)
 
     def create_new_connection(self, sock, id: int, port: int):
         return NodeConnection(self, sock, int(id), port)
@@ -99,23 +110,19 @@ class Node(threading.Thread):
 
     def run(self):
         while not self.terminate_flag.is_set():
-            try:
-                connection, client_address = self.sock.accept()
+            connection, client_address = self.sock.accept()
+            connected_node_id = connection.recv(4096).decode('utf-8')
+            connection.send(str(self.id).encode('utf-8'))
 
-                connected_node_id = connection.recv(4096).decode('utf-8')
-                connection.send(str(self.id).encode('utf-8'))
-
-                thread_client = self.create_new_connection(connection, connected_node_id, client_address[1])
-                thread_client.start()
-            
-            except Exception as e:
-                raise e
-
+            thread_client = self.create_new_connection(connection, connected_node_id, client_address[1])
+            thread_client.start()
             time.sleep(0.01)
 
+        print(f"G{self.id} - Shutting down")
+        for t in self.connections:
+            t.send(str("STOP").encode("utf-8"))
         for t in self.connections:
             t.stop()
-
         time.sleep(1)
 
         for t in self.connections:

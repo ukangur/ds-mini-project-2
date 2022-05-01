@@ -1,9 +1,10 @@
 import time
 import threading
 import json
+import socket
 
 class NodeConnection(threading.Thread):
-    def __init__(self, main_node, sock, id, port):
+    def __init__(self, main_node, sock: socket.socket, id: int, port: int):
 
         super(NodeConnection, self).__init__()
 
@@ -16,8 +17,6 @@ class NodeConnection(threading.Thread):
         self.id = id
         self.EOT_CHAR = 0x04.to_bytes(1, 'big')
 
-        self.info = {}
-
     def send(self, data):
         try:
             json_data = json.dumps(data)
@@ -27,6 +26,7 @@ class NodeConnection(threading.Thread):
             self.stop() # Stopping node due to failure
 
     def stop(self):
+        print(f"Connection {self.main_node.id} -> {self.id} - Setting stop flag")
         self.terminate_flag.set()
 
     def parse_packet(self, packet):
@@ -44,29 +44,25 @@ class NodeConnection(threading.Thread):
 
     def run(self):         
         buffer = b''
-
         while not self.terminate_flag.is_set():
-            chunk = b''
-            chunk = self.sock.recv(4096) 
-            if chunk != b'':
-                buffer += chunk
-                eot_pos = buffer.find(self.EOT_CHAR)
-
-                while eot_pos > 0:
-                    packet = buffer[:eot_pos]
-                    buffer = buffer[eot_pos + 1:]
-
-                    self.main_node.node_message(self.parse_packet(packet) )
-
+            try:
+                chunk = b''
+                print(f"Receiving data...")
+                chunk = self.sock.recv(4096)
+                if chunk != b'':
+                    buffer += chunk
                     eot_pos = buffer.find(self.EOT_CHAR)
 
-            time.sleep(0.01)
+                    while eot_pos > 0:
+                        packet = buffer[:eot_pos]
+                        buffer = buffer[eot_pos + 1:]
+                        self.main_node.node_message(self.parse_packet(packet) )
 
+                        eot_pos = buffer.find(self.EOT_CHAR)
+                time.sleep(0.01)
+            except ConnectionResetError:
+                print("???")
+                continue
+        print("Closing connection...")
         self.sock.settimeout(None)
         self.sock.close()
-
-    def set_info(self, key, value):
-        self.info[key] = value
-
-    def get_info(self, key):
-        return self.info[key]

@@ -2,16 +2,22 @@ import sys
 from typing import List
 import node
 import os
+import random
 
 START_PORT = 6394
 
 LIST_PAYLOAD = {"command": "g-state"}
 EXIT_PAYLOAD = {"command": "exit"}
+SET_PRIMARY_PAYLOAD = {"command": "set-primary"}
+SIMPLE_STATE_PAYLOAD = {"command": "simple-state"}
+ALLOWED_STATES = ["faulty", "non-faulty"]
+COMMANDS = "g-state <ID> <state>, g-add <K>, g-kill <ID>, g-state, actual-order <ORDER>"
 
 def start(num_threads: int) -> List[node.Node]:
     nodes: List[node.Node] = []
+    primary_index = random.randint(0, num_threads - 1)
     for i in range(num_threads):
-        new_node = node.Node(START_PORT + i, i + 1)
+        new_node = node.Node(START_PORT + i, i + 1, i == primary_index)
         nodes.append(new_node)
         new_node.start()
     for start_node in nodes:
@@ -20,8 +26,24 @@ def start(num_threads: int) -> List[node.Node]:
                 start_node.connect_with_node(end_node.port)
     return nodes
 
+def start_new_nodes(nodes: List[node.Node], k: int):
+    max_id = max([n.id for n in nodes])
+    new_nodes: List[node.Node] = []
+    for i in range(k):
+        new_node = node.Node(START_PORT + max_id + i, max_id + i + 1, False)
+        new_nodes.append(new_node)
+        new_node.start()
+    for start_node in new_nodes:
+        for end_node in nodes:
+            if start_node.id != end_node.id:
+                start_node.connect_with_node(end_node.port)
+                end_node.connect_with_node(start_node.port)      
+    nodes.extend(new_nodes)
+    return nodes
+
+
 def run(nodes: List[node.Node]):
-    print("Commands: ...")
+    print(f"Commands: {COMMANDS}")
     command = None
     try:
         while command != 'exit':
@@ -32,18 +54,20 @@ def run(nodes: List[node.Node]):
                     handle_change(nodes, parts)
                 else:    
                     selfcast(nodes, LIST_PAYLOAD)
-            if parts[0] == "actual-order":
+            elif parts[0] == "actual-order":
                 handle_order(nodes, parts)
-            if parts[0] == "g-add":
-                handle_add(nodes, parts)
-            if parts[0] == "g-kill":
-                handle_kill(nodes, parts)
+            elif parts[0] == "g-add":
+                nodes = handle_add(nodes, parts)
+                handle_simple_state(nodes)
+            elif parts[0] == "g-kill":
+                nodes = handle_kill(nodes, parts)
+                handle_simple_state(nodes)
             elif parts[0] == "exit":
                 stop_nodes(nodes)
                 os._exit(0)
             else:
                 print(f"{parts[0]} is not a valid command")
-                print("Commands: ...")
+                print(f"Commands: {COMMANDS}")
 
     except KeyboardInterrupt:
         stop_nodes(nodes)
@@ -67,22 +91,56 @@ def handle_order(nodes: List[node.Node], parts: List[str]):
     broadcast(nodes, {"command": parts[1], "t": float(parts[1])})
 
 def handle_kill(nodes: List[node.Node], parts: List[str]):
-    if len(parts) < 2:
-        print(f"Expected node id parameter, got None")
-        return
-    return
+    if len(parts) == 2:
+        command, id = parts
+        try:
+            data = {"command": command, "id" : int(id)}
+            primary_node = get_primary_node(nodes)
+            primary_node.send_to_nodes(data)
+            primary_node.send_to_self(data)
+            new_nodes = [n for n in nodes if n.id != int(id)]
+            if primary_node.id == int(id):
+                new_primary_id = random.choice([n.id for n in new_nodes])
+                primary_node.send_to_node_with_id(SET_PRIMARY_PAYLOAD, new_primary_id)
+            return new_nodes
+        except ValueError:
+            print(f"Expected a valid integer, got {id}")
+    else:
+        print(f"Expected only id parameter")
+
 
 def handle_add(nodes: List[node.Node], parts: List[str]):
-    if len(parts) < 2:
-        print(f"Expected number of new nodes, got None")
-        return
-    return
+    if len(parts) == 2:
+        try:
+            _, k = parts
+            return start_new_nodes(nodes, int(k))
+        except ValueError:
+            print(f"Expected a valid integer, got {k}")
+    else:
+        print(f"Expected only number of new nodes")
 
 def handle_change(nodes: List[node.Node], parts: List[str]):
-    if len(parts) < 3:
+    if len(parts) == 3:
+        command, id, state = parts
+        if state.lower() not in ALLOWED_STATES:
+            print(f"Incorrect state - expected one of {ALLOWED_STATES}")
+        try:
+            data = {"command": command, "state": state.lower()}
+            get_primary_node(nodes).send_to_node_with_id(data, int(id))
+        except ValueError:
+            print(f"Expected a valid integer, got {id}")
+    else:
         print(f"Expected id and state parameter")
-        return
-    return
+
+def handle_simple_state(nodes: List[node.Node]):
+    for n in nodes:
+        n.send_to_self(SIMPLE_STATE_PAYLOAD)
+
+def get_primary_node(nodes: List[node.Node]):
+    for n in nodes:
+        if n.role == node.Role.PRIMARY:
+            return n
+    raise Exception("Did not find primary node")
 
 if __name__=='__main__':
     if len(sys.argv) < 2:
