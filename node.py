@@ -30,8 +30,8 @@ class Node(threading.Thread):
         self.role = Role.PRIMARY if is_primary else Role.SECONDARY
         self.callback = self.node_callback
 
-        self.connections: List[NodeConnection] = [] 
-
+        self.send_connections: List[NodeConnection] = [] 
+        self.recv_connections: List[NodeConnection] = []
 
         # Start the TCP/IP server
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -52,9 +52,20 @@ class Node(threading.Thread):
             if self.id == id:
                 self.stop()
             else:
-                for conn in self.connections:
+                index = -1
+                for i, conn in enumerate(self.send_connections):
                     if conn.id == id:
                         conn.stop()
+                        index = i
+                        break
+                self.send_connections.pop(index)
+                index = -1
+                for i, conn in enumerate(self.recv_connections):
+                    if conn.id == id:
+                        conn.stop()
+                        index = i
+                        break
+                self.recv_connections.pop(index)
         elif command == "actual-order":
             return
         elif command == "set-primary":
@@ -69,14 +80,14 @@ class Node(threading.Thread):
         self.sock.listen(1)
 
     def send_to_nodes(self, data: dict):
-        for connection in self.connections:
+        for connection in self.send_connections:
             connection.send(data)
 
     def send_to_self(self, data: dict):
-        self.send_to_node_with_id(data, self.id)
+        self.node_callback(data)
 
     def send_to_node_with_id(self, data: dict, id: int):
-        for connection in self.connections:
+        for connection in self.send_connections:
             if connection.id == id:
                 connection.send(data)
                 break
@@ -89,10 +100,11 @@ class Node(threading.Thread):
             sock.send(str(self.id).encode('utf-8'))
             connected_node_id = sock.recv(4096).decode('utf-8')
 
+            #Sending NodeConnection
             thread_client = self.create_new_connection(sock, connected_node_id, port)
             thread_client.start()
 
-            self.connections.append(thread_client)
+            self.send_connections.append(thread_client)
             return True
 
         except:
@@ -102,30 +114,31 @@ class Node(threading.Thread):
         self.terminate_flag.set()
         self.connect_with_node(self.port)
 
-    def create_new_connection(self, sock, id: int, port: int):
+    def create_new_connection(self, sock: socket.socket, id: int, port: int):
         return NodeConnection(self, sock, int(id), port)
-
-    def create_ok_payload(self):
-        return {"command": "ok", "id": self.id, "timestamp": self.timestamp}
 
     def run(self):
         while not self.terminate_flag.is_set():
             connection, client_address = self.sock.accept()
+            connection.settimeout(1)
             connected_node_id = connection.recv(4096).decode('utf-8')
             connection.send(str(self.id).encode('utf-8'))
 
+            #Receiving NodeConnection
             thread_client = self.create_new_connection(connection, connected_node_id, client_address[1])
             thread_client.start()
+            self.recv_connections.append(thread_client)
             time.sleep(0.01)
 
-        print(f"G{self.id} - Shutting down")
-        for t in self.connections:
-            t.send(str("STOP").encode("utf-8"))
-        for t in self.connections:
+        for t in self.send_connections:
             t.stop()
-        time.sleep(1)
+        for t in self.recv_connections:
+            t.stop()
 
-        for t in self.connections:
+        time.sleep(1)
+        for t in self.send_connections:
+            t.join()
+        for t in self.recv_connections:
             t.join()
 
         self.sock.settimeout(None)   
