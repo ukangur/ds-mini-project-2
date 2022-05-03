@@ -8,6 +8,8 @@ START_PORT = 6394
 
 LIST_PAYLOAD = {"command": "g-state"}
 EXIT_PAYLOAD = {"command": "exit"}
+ATTACK_PAYLOAD = {"command": "actual-order", "order": "attack"}
+RETREAT_PAYLOAD = {"command": "actual-order", "order": "retreat"}
 SET_PRIMARY_PAYLOAD = {"command": "set-primary"}
 SIMPLE_STATE_PAYLOAD = {"command": "simple-state"}
 ALLOWED_STATES = ["faulty", "non-faulty"]
@@ -85,28 +87,49 @@ def stop_nodes(nodes: List[node.Node]):
     selfcast(nodes, EXIT_PAYLOAD)
 
 def handle_order(nodes: List[node.Node], parts: List[str]):
-    if len(parts) < 2:
-        print(f"Expected order parameter, got None")
-        return
-    broadcast(nodes, {"command": parts[1], "t": float(parts[1])})
+    if len(parts) == 2:
+        faultynodecount : int = count_faulty_nodes(nodes)
+        if (3 * faultynodecount + 1) > len(nodes):
+            print(f"Execute order: cannot be determined – not enough generals in the system! {faultynodecount} faulty node in the system - {len(nodes)-1} out of {len(nodes)} quorum not consistent")
+            return
+        _, order = parts
+        primary_node = get_primary_node(nodes)
+        primary_node_id = primary_node.id
+        if order == "attack":
+                data = {"command": "actual-order", "order": "attack", "primary_id": primary_node_id, "faulty_count":faultynodecount}
+                primary_node.send_to_self(data)
+        elif order == "retreat":
+                data = {"command": "actual-order", "order": "retreat", "primary_id": primary_node_id, "faulty_count":faultynodecount}
+                primary_node.send_to_self(data)
+        else:
+            print(f"Expected an attack or retreat order, got {order}")
+
+    else:
+        print(f"Expected only order parameter")
 
 def handle_kill(nodes: List[node.Node], parts: List[str]):
     if len(parts) == 2:
         command, id = parts
         try:
-            data = {"command": command, "id" : int(id)}
-            primary_node = get_primary_node(nodes)
-            primary_node.send_to_nodes(data)
-            primary_node.send_to_self(data)
-            new_nodes = [n for n in nodes if n.id != int(id)]
-            if primary_node.id == int(id):
-                new_primary_id = random.choice([n.id for n in new_nodes])
-                primary_node.send_to_node_with_id(SET_PRIMARY_PAYLOAD, new_primary_id)
-            return new_nodes
+                if check_id(nodes,int(id)):
+                    data = {"command": command, "id" : int(id)}
+                    primary_node = get_primary_node(nodes)
+                    primary_node.send_to_nodes(data)
+                    primary_node.send_to_self(data)
+                    new_nodes = [n for n in nodes if n.id != int(id)]
+                    if primary_node.id == int(id):
+                        new_primary_id = random.choice([n.id for n in new_nodes])
+                        primary_node.send_to_node_with_id(SET_PRIMARY_PAYLOAD, new_primary_id)
+                    return new_nodes
+                else:
+                    print(f"No node with id {id}")
+                    return nodes
         except ValueError:
             print(f"Expected a valid integer, got {id}")
+            return nodes
     else:
         print(f"Expected only id parameter")
+        return nodes
 
 
 def handle_add(nodes: List[node.Node], parts: List[str]):
@@ -141,6 +164,20 @@ def get_primary_node(nodes: List[node.Node]):
         if n.role == node.Role.PRIMARY:
             return n
     raise Exception("Did not find primary node")
+
+def count_faulty_nodes(nodes: List[node.Node]):
+    counter = 0
+    for n in nodes:
+        if n.state == node.State.F:
+            counter += 1
+    return counter
+
+def check_id(nodes: List[node.Node], id: int):
+    for node in nodes:
+        if node.id == id:
+            return True
+    
+    return False
 
 if __name__=='__main__':
     if len(sys.argv) < 2:
