@@ -140,6 +140,7 @@ def handle_add(nodes: List[node.Node], parts: List[str]):
             print(f"Expected a valid integer, got {k}")
     else:
         print(f"Expected only number of new nodes")
+        return nodes
 
 def handle_change(nodes: List[node.Node], parts: List[str]):
     if len(parts) == 3:
