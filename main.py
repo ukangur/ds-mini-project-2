@@ -90,7 +90,7 @@ def handle_order(nodes: List[node.Node], parts: List[str]):
     if len(parts) == 2:
         faultynodecount : int = count_faulty_nodes(nodes)
         if (3 * faultynodecount + 1) > len(nodes):
-            print(f"Execute order: cannot be determined – not enough generals in the system! {faultynodecount} faulty node in the system - {len(nodes)-1} out of {len(nodes)} quorum not consistent")
+            print(f"Execute order: cannot be determined - not enough generals in the system! {faultynodecount} faulty node in the system - {len(nodes)-1} out of {len(nodes)} quorum not consistent")
             return
         _, order = parts
         primary_node = get_primary_node(nodes)
@@ -149,7 +149,11 @@ def handle_change(nodes: List[node.Node], parts: List[str]):
             print(f"Incorrect state - expected one of {ALLOWED_STATES}")
         try:
             data = {"command": command, "state": state.lower()}
-            get_primary_node(nodes).send_to_node_with_id(data, int(id))
+            primary = get_primary_node(nodes)
+            if primary.id != int(id):
+                primary.send_to_node_with_id(data, int(id))
+            else:
+                primary.send_to_self(data)
         except ValueError:
             print(f"Expected a valid integer, got {id}")
     else:

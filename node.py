@@ -32,6 +32,7 @@ class Node(threading.Thread):
         self.callback = self.node_callback
         self.vote = None
         self.received_votes: List[bool] = []
+        self.counter = 0
 
         self.send_connections: List[NodeConnection] = [] 
         self.recv_connections: List[NodeConnection] = []
@@ -77,23 +78,30 @@ class Node(threading.Thread):
             order: str = data.get("order")
             primary_id: int = data.get("primary_id")
             if self.state == State.NF:
-                data = {"command": "set-vote", "vote": True}
-                print("Sending vote True to everyone")
+                data = {"command": "set-vote", "vote": True, "sender-id": self.id}
                 self.send_to_nodes(data)
                 data = {"command": "get-order", "primary_id": primary_id}
             else:
                 for node in self.send_connections:
-                    data = {"command": "set-vote", "vote": bool(random.getrandbits(1))}
-                    self.send_to_node_with_id(data,node)
+                    data = {"command": "set-vote", "vote": bool(random.getrandbits(1)), "sender-id": self.id}
+                    self.send_to_node_with_id(data,node.id)
                 data = {"command": "get-order","primary_id": primary_id}
-            time.sleep(0.5)
+            while self.counter < len(self.recv_connections):
+                time.sleep(1)
+            self.counter = 0
             self.send_to_nodes(data)
             while len(self.received_votes) < len(self.recv_connections):
                 time.sleep(1)
-            print(f"These are the votes - {self.received_votes}")
 
             decisions_true = self.received_votes.count(True)
             decisions_false = self.received_votes.count(False)
+
+            self.received_votes = []
+
+            if order == "attack":
+                opposite_order = "retreat"
+            else:
+                opposite_order = "attack"
 
             if decisions_true > decisions_false:
                 if(faulty_node_count == 0):
@@ -102,19 +110,23 @@ class Node(threading.Thread):
                     print(f"Execute order: {order}! {faulty_node_count} faulty nodes in the system - {decisions_true} out of {decisions_true+decisions_false+1} quorum suggest {order}")
             else:
                 if(faulty_node_count == 0):
-                    print(f"Do not execute order: {order}! Non-faulty nodes in the system - {decisions_true} out of {decisions_true+decisions_false+1} quorum suggest not to {order}")
+                    print(f"execute order: {opposite_order}! Non-faulty nodes in the system - {decisions_false} out of {decisions_true+decisions_false+1} quorum suggest not to {opposite_order}")
                 else:
-                    print(f"Do not execute order: {order}! {faulty_node_count} faulty in the system - {decisions_true} out of {decisions_true+decisions_false+1} quorum suggest not to {order}")
+                    print(f"execute order: {opposite_order}! {faulty_node_count} faulty in the system - {decisions_false} out of {decisions_true+decisions_false+1} quorum suggest not to {opposite_order}")
 
         elif command == "set-vote":
             vote: bool = data.get("vote")
+            sender_id: int = data.get("sender-id")
+            data = {"command": "send-ok"}
             if(vote):
                 self.vote = vote
+                self.send_to_node_with_id(data,sender_id)
             else:
                 self.vote = bool(random.getrandbits(1))
+                self.send_to_node_with_id(data,sender_id)
+                
 
         elif command == "get-order":
-            print(f"Made it to counting votes for node {self.id}")
             primary_id = data.get("primary_id")
             vote: bool = data.get("vote")
             self.received_votes.append(self.vote)
@@ -122,8 +134,6 @@ class Node(threading.Thread):
             self.send_to_nodes_except_id(data,primary_id)
             while len(self.received_votes) < len(self.recv_connections):
                 time.sleep(1)
-
-            print(f"The vote list for node {self.id} is {self.received_votes}")
         
             votes_true = self.received_votes.count(True)
             votes_false = self.received_votes.count(False)
@@ -146,6 +156,9 @@ class Node(threading.Thread):
         elif command == "receive-vote":
             vote = data.get("vote")
             self.received_votes.append(vote)
+
+        elif command == "send-ok":
+            self.counter += 1
 
         elif command == "set-primary":
             self.role = Role.PRIMARY
