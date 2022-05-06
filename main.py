@@ -13,7 +13,7 @@ RETREAT_PAYLOAD = {"command": "actual-order", "order": "retreat"}
 SET_PRIMARY_PAYLOAD = {"command": "set-primary"}
 SIMPLE_STATE_PAYLOAD = {"command": "simple-state"}
 ALLOWED_STATES = ["faulty", "non-faulty"]
-COMMANDS = "g-state <ID> <state>, g-add <K>, g-kill <ID>, g-state, actual-order <ORDER>"
+COMMANDS = "g-state <ID> <state>, g-add <K>, g-kill <ID>, g-state, actual-order <ORDER>, exit"
 
 def start(num_threads: int) -> List[node.Node]:
     nodes: List[node.Node] = []
