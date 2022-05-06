@@ -1,6 +1,6 @@
 # Distributed Systems (Spring 2022)
 
-## Mini-project 1: The Byzantine General’s problem with Consensus
+## Mini-project 2: The Byzantine General’s problem with Consensus
 ### Authors: Markus Punnar and Uku Kangur
 
 This project implements the the Byzantine General’s problem in Python using distributed threaded nodes. The project composes of four files:
