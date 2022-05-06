@@ -114,12 +114,11 @@ def handle_kill(nodes: List[node.Node], parts: List[str]):
                 if check_id(nodes,int(id)):
                     data = {"command": command, "id" : int(id)}
                     primary_node = get_primary_node(nodes)
-                    primary_node.send_to_nodes(data)
-                    primary_node.send_to_self(data)
                     new_nodes = [n for n in nodes if n.id != int(id)]
                     if primary_node.id == int(id):
                         new_primary_id = random.choice([n.id for n in new_nodes])
                         primary_node.send_to_node_with_id(SET_PRIMARY_PAYLOAD, new_primary_id)
+                    primary_node.send_to_self(data)
                     return new_nodes
                 else:
                     print(f"No node with id {id}")

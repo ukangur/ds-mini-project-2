@@ -95,7 +95,6 @@ class Node(threading.Thread):
 
             decisions_true = self.received_votes.count(True)
             decisions_false = self.received_votes.count(False)
-
             self.received_votes = []
 
             if order == "attack":
@@ -137,6 +136,7 @@ class Node(threading.Thread):
         
             votes_true = self.received_votes.count(True)
             votes_false = self.received_votes.count(False)
+            self.received_votes = []
 
             if(votes_true > votes_false):
                 data = {"command": "receive-vote", "vote": True}
