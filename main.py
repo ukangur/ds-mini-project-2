@@ -65,12 +65,6 @@ def run(nodes: List[node.Node]):
             elif parts[0] == "g-kill":
                 nodes = handle_kill(nodes, parts)
                 handle_simple_state(nodes)
-                for node in nodes:
-                    print(f"{node.id} is connected to:")
-                    for i in node.recv_connections:
-                        print(i.id)
-                    for i in node.send_connections:
-                        print(i.id)
             elif parts[0] == "exit":
                 stop_nodes(nodes)
                 os._exit(0)
